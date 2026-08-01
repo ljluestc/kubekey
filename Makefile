@@ -296,6 +296,16 @@ test: $(SETUP_ENVTEST) ## Run unit and integration tests
 test-verbose: ## Run unit and integration tests with verbose flag
 	@$(MAKE) test TEST_ARGS="$(TEST_ARGS) -v"
 
+.PHONY: lint-regression-batch-v1
+lint-regression-batch-v1: ## Fail if apiVersion: batch/v1beta1 regresses into the embedded tree (issue #2086). Pairs with pkg/const/scheme_test.go.
+	@hits="$$(grep -rln 'batch/v1beta1' --exclude-dir=.git --exclude-dir=vendor builtin plugins config 2>/dev/null || true)"; \
+	if [ -n "$$hits" ]; then \
+		echo "ERROR: forbidden apiVersion: batch/v1beta1 found in tree (issue #2086):" >&2; \
+		echo "$$hits" >&2; \
+		exit 1; \
+	fi; \
+	echo "OK: no batch/v1beta1 references"
+
 ## --------------------------------------
 ## Cleanup / Verification
 ## --------------------------------------
