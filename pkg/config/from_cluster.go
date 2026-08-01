@@ -33,6 +33,7 @@ import (
 	"github.com/lithammer/dedent"
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -218,21 +219,27 @@ func GetInfoFromCluster(config, name string) (*OptionsCluster, error) {
 		}
 	}
 
+	// kube-proxy is optional: on clusters whose CNI replaces kube-proxy (e.g. cilium
+	// kube-proxy replacement) the kube-proxy configmap does not exist. Fall back to
+	// kube-proxy's default settings in that case instead of failing.
+	opt.ProxyMode = "iptables"
+	opt.MasqueradeAll = "false"
+
 	kubeProxyConfig, err := clientset.CoreV1().ConfigMaps("kube-system").Get(context.TODO(), "kube-proxy", metav1.GetOptions{})
-	if err != nil {
+	if err != nil && !apierrors.IsNotFound(err) {
 		return nil, err
 	}
 
-	viper.SetConfigType("yaml")
-	if err := viper.ReadConfig(bytes.NewBuffer([]byte(kubeProxyConfig.Data["config.conf"]))); err != nil {
-		return nil, err
-	}
+	if err == nil {
+		viper.SetConfigType("yaml")
+		if err := viper.ReadConfig(bytes.NewBuffer([]byte(kubeProxyConfig.Data["config.conf"]))); err != nil {
+			return nil, err
+		}
 
-	opt.MasqueradeAll = viper.GetString("iptables.masqueradeAll")
-	if viper.GetString("mode") == "ipvs" {
-		opt.ProxyMode = viper.GetString("mode")
-	} else {
-		opt.ProxyMode = "iptables"
+		opt.MasqueradeAll = viper.GetString("iptables.masqueradeAll")
+		if viper.GetString("mode") == "ipvs" {
+			opt.ProxyMode = viper.GetString("mode")
+		}
 	}
 
 	return &opt, nil
